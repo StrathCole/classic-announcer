@@ -167,14 +167,13 @@ function processAnnouncements(announcements) {
         return;
     }
 
-    console.log('Sending announcements to', relevantChats.length, 'chats.');
-    console.log('Announcements:', announcements);
-    
     let message = '';
     for (let announcement of announcements) {
         if(announcement.id <= storage.lastAnnouncement?.id) {
             continue;
         }
+        console.log('Sending announcement to', relevantChats.length, 'chats.');
+        console.log('Announcement:', announcement);
         storage.lastAnnouncement = announcement;
 
         message = `**${escapeMarkdownV2(announcement.title)}**\n\n${escapeMarkdownV2(announcement.content)}`;

@@ -6,7 +6,7 @@ use cosmwasm_std::entry_point;
 
 use cosmwasm_std::{
     Env, MessageInfo,
-    Response, StdResult, Addr, Storage,
+    Response, StdResult, Addr, Order,
 };
 
 use cosmwasm_std::DepsMut;
@@ -54,120 +54,128 @@ pub fn execute(
     msg: ExecuteMsg
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::AddToWhitelist { author } => execute_add_to_whitelist(deps, env, info, author),
-        ExecuteMsg::RemoveFromWhitelist { author } => execute_remove_from_whitelist(deps, env, info, author),
+        ExecuteMsg::AddToWhitelist { authors } => check_whitelist_confirmation(deps, env, info, authors, WhitelistAction::Add),
+        ExecuteMsg::RemoveFromWhitelist { authors } => check_whitelist_confirmation(deps, env, info, authors, WhitelistAction::Remove),
         ExecuteMsg::Announcement { title, content, topic } => execute_announcement(deps, env, info, title, content, topic),
         ExecuteMsg::DeleteAnnouncement { id } => execute_delete_announcement(deps, env, info, id),
     }
 }
 
 fn check_whitelist_confirmation(
-    storage: &mut dyn Storage,
+    deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    author: Addr,
+    authors: Vec<Addr>,
     action: WhitelistAction,
 ) -> Result<Response, ContractError> {
     // check if the sender is in the whitelist
-    let whitelist = WHITELIST.load(storage)?;
+    let whitelist = WHITELIST.load(deps.storage)?;
     if !whitelist.contains(&info.sender) {
         return Err(ContractError::Unauthorized {});
     }
 
-    match action {
-        WhitelistAction::Add => {
-            // check if the author is already in the whitelist
-            if whitelist.contains(&author) {
-                return Err(ContractError::GenericError("The author is already in the whitelist".to_string()));
-            }
-        },
-        WhitelistAction::Remove => {
-            // check if the author is not in the whitelist
-            if !whitelist.contains(&author) {
-                return Err(ContractError::GenericError("The author is not in the whitelist".to_string()));
-            }
-        },
+    if authors.len() == 0 {
+        return Err(ContractError::GenericError("No authors provided".to_string()));
     }
 
-    let new_vote = WhitelistVote {
-        action: action.clone(),
-        confirmed: vec![],
-        expires: env.block.time.plus_seconds(60 * 60 * 24 * 7),
+    // first of all remove expired votes
+    let expired = match WHITELIST_VOTES.range(deps.storage, None, None, Order::Ascending)
+        .filter_map(|item| match item {
+            Ok((k, a)) if a.expires > env.block.time => Some(Ok(k)),
+            Ok(_) => None,
+            Err(e) => Some(Err(e)),
+        })
+        .collect::<StdResult<Vec<String>>>() {
+            Ok(expired) => expired,
+            Err(_) => vec![],
     };
 
-    // check if there is already a voting entry
-    let mut votes = if let Ok(votes) = WHITELIST_VOTES.load(storage, author.to_string()) {
-        if votes.expires.lt(&env.block.time) || votes.action != action {
-            new_vote
-        } else {
-            votes
-        }
-    } else {
-        new_vote
-    };
-
-    // check if the sender has already voted
-    // we don't error out here, just ignore the vote
-    if !votes.confirmed.contains(&info.sender) {
-        // add the sender to the confirmed list
-        votes.confirmed.push(info.sender.clone());
+    for vote_key in expired {
+        WHITELIST_VOTES.remove(deps.storage, vote_key);
     }
 
+    // now process the new votes
+    let mut processed = 0;
+    let mut voted = 0;
+    let mut confirmed = 0;
 
-    let voters = whitelist.len();
-    // check if more than 2/3 of the whitelist has voted
-    let required_majority = voters.checked_mul(2)
-        .and_then(|v| v.checked_add(2)) // Add 2 for rounding up before division
-        .and_then(|v| v.checked_div(3))
-        .ok_or(ContractError::GenericError("Cannot calculate majority".to_string()))?;
-
-    if votes.confirmed.len() >= required_majority {
-        // update the whitelist
-        let mut whitelist = WHITELIST.load(storage)?;
-        match votes.action {
+    for author in authors.clone() {    
+        match action {
             WhitelistAction::Add => {
-                whitelist.push(author.clone());
+                // check if the author is already in the whitelist
+                if !whitelist.contains(&author) {
+                    processed += 1;
+                }
             },
             WhitelistAction::Remove => {
-                whitelist.retain(|a| a != &author);
+                // check if the author is not in the whitelist
+                if whitelist.contains(&author) {
+                    processed += 1;
+                }
             },
         }
-        WHITELIST.save(storage, &whitelist)?;
 
-        // remove the voting entry
-        WHITELIST_VOTES.remove(storage, author.to_string());
+        let new_vote = WhitelistVote {
+            action: action.clone(),
+            confirmed: vec![],
+            expires: env.block.time.plus_seconds(60 * 60 * 24 * 7),
+        };
 
-        return Ok(Response::new()
-            .add_attribute("action", votes.action.to_string())
-            .add_attribute("author", author.to_string())
-            .add_attribute("result", "confirmed"));
+        // check if there is already a voting entry
+        let mut votes = if let Ok(votes) = WHITELIST_VOTES.load(deps.storage, author.to_string()) {
+            if votes.expires.lt(&env.block.time) || votes.action != action {
+                new_vote
+            } else {
+                votes
+            }
+        } else {
+            new_vote
+        };
+
+        // check if the sender has already voted
+        // we don't error out here, just ignore the vote
+        if !votes.confirmed.contains(&info.sender) {
+            // add the sender to the confirmed list
+            votes.confirmed.push(info.sender.clone());
+        }
+
+
+        let voters = whitelist.len();
+        // check if more than 2/3 of the whitelist has voted
+        let required_majority = voters.checked_mul(2)
+            .and_then(|v| v.checked_add(2)) // Add 2 for rounding up before division
+            .and_then(|v| v.checked_div(3))
+            .ok_or(ContractError::GenericError("Cannot calculate majority".to_string()))?;
+
+        if votes.confirmed.len() >= required_majority {
+            // update the whitelist
+            let mut whitelist = WHITELIST.load(deps.storage)?;
+            match votes.action {
+                WhitelistAction::Add => {
+                    whitelist.push(author.clone());
+                },
+                WhitelistAction::Remove => {
+                    whitelist.retain(|a| a != &author);
+                },
+            }
+            WHITELIST.save(deps.storage, &whitelist)?;
+
+            // remove the voting entry
+            WHITELIST_VOTES.remove(deps.storage, author.to_string());
+            confirmed += 1;
+        } else {
+            WHITELIST_VOTES.save(deps.storage, author.to_string(), &votes)?;
+            voted += 1;
+        }
     }
 
-    // save the voting entry
-    WHITELIST_VOTES.save(storage, author.to_string(), &votes)?;
-
     Ok(Response::new()
-        .add_attribute("action", votes.action.to_string())
-        .add_attribute("author", author.to_string())
-        .add_attribute("result", "voted"))
-}
-
-fn execute_add_to_whitelist(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    author: Addr,
-) -> Result<Response, ContractError> {
-    check_whitelist_confirmation(deps.storage, env, info, author, WhitelistAction::Add)
-}
-
-fn execute_remove_from_whitelist(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    author: Addr,
-) -> Result<Response, ContractError> {
-    check_whitelist_confirmation(deps.storage, env, info, author, WhitelistAction::Remove)
+    .add_attribute("action", action.to_string())
+    .add_attribute("author", authors.iter().map(|a| a.to_string()).collect::<Vec<String>>().join(",").to_string())
+    .add_attribute("processed", processed.to_string())
+    .add_attribute("confirmed", confirmed.to_string())
+    .add_attribute("pending", voted.to_string())
+    )
 }
 
 fn execute_announcement(

@@ -12,8 +12,8 @@ pub struct InstantiateMsg {}
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    AddToWhitelist { author: Addr, },
-    RemoveFromWhitelist { author: Addr, },
+    AddToWhitelist { authors: Vec<Addr>, },
+    RemoveFromWhitelist { authors: Vec<Addr>, },
     Announcement { title: String, content: String, topic: Option<String>, },
     DeleteAnnouncement { id: u64, },
 }
@@ -22,6 +22,7 @@ pub enum ExecuteMsg {
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     Whitelist {},
+    Pending {},
     Announcements(QueryAnnouncementsMsg),
 }
 
