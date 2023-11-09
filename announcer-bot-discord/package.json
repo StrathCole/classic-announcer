@@ -1,0 +1,16 @@
+{
+  "name": "announcer-bot-discord",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@terra-money/terra.js": "^3.1.10",
+    "axios": "^1.4.0",
+    "discord.js": "^14.13.0"
+  }
+}
