@@ -114,7 +114,7 @@ function escapeMarkdownV2(text) {
     if(!text) {
         return '';
     }
-    const escapeChars = '_-[]()~>#+=|{}.!';
+    const escapeChars = '_~>#+=|{}';
     return text.split('').map(char => escapeChars.includes(char) ? `\\${char}` : char).join('');
 }
 
