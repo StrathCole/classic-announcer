@@ -56,10 +56,6 @@ client.on('messageCreate', async (message) => {
     const command = args.shift().toLowerCase();
 
     switch (command) {
-        case 'start':
-            // Equivalent to Telegram's /start
-            message.channel.send('Bot has started! Use /notify to begin seeing announcements.');
-            break;
         case 'notify':
             // Equivalent to Telegram's /notify
             const isAdminNotify = await checkForAdmin(message);
