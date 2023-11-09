@@ -175,7 +175,7 @@ function processAnnouncements(announcements) {
         storage.lastAnnouncement = announcement;
 
         message = `**${escapeMarkdownV2(announcement.title)}**\n\n${escapeMarkdownV2(announcement.content)}`;
-        message += `\n\nTopic: ${escapeMarkdownV2(announcement.topic)}`;
+        message += `\n\nTopic: ${escapeMarkdownV2(announcement.topic?.name)}`;
         if(announcement.time) {
             message += `\nSent: ${escapeMarkdownV2(new Date(announcement.time / 1000000).toLocaleString())}`;
         }
