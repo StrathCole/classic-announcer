@@ -16,6 +16,8 @@ pub enum ExecuteMsg {
     RemoveFromWhitelist { authors: Vec<Addr>, },
     Announcement { title: String, content: String, topic: Option<String>, },
     DeleteAnnouncement { id: u64, },
+    AddTopic { identifier: String, name: String, description: String, color: String, },
+    RemoveTopic { identifier: String, },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -24,6 +26,7 @@ pub enum QueryMsg {
     Whitelist {},
     Pending {},
     Announcements(QueryAnnouncementsMsg),
+    Topics {},
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

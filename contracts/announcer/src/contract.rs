@@ -17,7 +17,7 @@ use cosmwasm_std::DepsMut;
 use crate::error::ContractError;
 use crate::migrate::{ensure_from_older_version, set_contract_version};
 use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg};
-use crate::state::{WHITELIST, WhitelistAction, WHITELIST_VOTES, WhitelistVote, Announcement, announcements, NEXT_ID};
+use crate::state::{WHITELIST, WhitelistAction, WHITELIST_VOTES, WhitelistVote, Announcement, announcements, NEXT_ID, TOPICS, Topic};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "strathcole:announcer";
@@ -58,6 +58,8 @@ pub fn execute(
         ExecuteMsg::RemoveFromWhitelist { authors } => check_whitelist_confirmation(deps, env, info, authors, WhitelistAction::Remove),
         ExecuteMsg::Announcement { title, content, topic } => execute_announcement(deps, env, info, title, content, topic),
         ExecuteMsg::DeleteAnnouncement { id } => execute_delete_announcement(deps, env, info, id),
+        ExecuteMsg::AddTopic { identifier, name, description, color } => execute_add_topic(deps, env, info, identifier, name, description, color),
+        ExecuteMsg::RemoveTopic { identifier } => execute_remove_topic(deps, env, info, identifier),
     }
 }
 
@@ -198,6 +200,17 @@ fn execute_announcement(
     }.add(1);
     NEXT_ID.save(deps.storage, &next_id)?;
 
+    let topic = if let Some(topic) = topic {
+        match TOPICS.load(deps.storage, topic) {
+            Ok(topic) => {
+                Some(topic.clone())
+            },
+            Err(_) => { return Err(ContractError::GenericError("Topic not found".to_string())); },
+        }
+    } else {
+        None
+    };
+
     let announcement = Announcement::new(next_id, title, content, info.sender.clone(), topic, env.block.time);
 
     announcements().save(deps.storage, next_id, &announcement)?;
@@ -226,4 +239,60 @@ fn execute_delete_announcement(
         .add_attribute("action", "delete_announcement")
         .add_attribute("author", info.sender.to_string())
         .add_attribute("id", id.to_string()))
+}
+
+fn execute_add_topic(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    identifier: String,
+    name: String,
+    description: String,
+    color: String,
+) -> Result<Response, ContractError> {
+    // check if the sender is in the whitelist
+    let whitelist = WHITELIST.load(deps.storage)?;
+    if !whitelist.contains(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let topic = Topic::new(identifier.clone(), name, description, color);
+    TOPICS.update(deps.storage, identifier.clone(), |old| {
+        match old {
+            Some(_) => Err(ContractError::GenericError("Topic already exists".to_string())),
+            None => Ok(topic),
+        }
+    })?;
+
+    Ok(Response::new()
+        .add_attribute("action", "add_topic")
+        .add_attribute("author", info.sender.to_string())
+        .add_attribute("identifier", identifier))
+}
+
+fn execute_remove_topic(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    identifier: String,
+) -> Result<Response, ContractError> {
+    // check if the sender is in the whitelist
+    let whitelist = WHITELIST.load(deps.storage)?;
+    if !whitelist.contains(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    // check if there are any announcements with this topic
+    let list = announcements().idx.topic.sub_prefix(identifier.clone()).range(deps.storage, None, None, Order::Descending)
+        .filter_map(Result::ok).map(|(_, a)| a).collect::<Vec<Announcement>>();
+    if list.len() > 0 {
+        return Err(ContractError::GenericError("Topic still in use by at least one announcement".to_string()));
+    }
+
+    TOPICS.remove(deps.storage, identifier.clone());
+
+    Ok(Response::new()
+        .add_attribute("action", "remove_topic")
+        .add_attribute("author", info.sender.to_string())
+        .add_attribute("identifier", identifier))
 }

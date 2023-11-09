@@ -4,7 +4,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{Env, StdResult, Binary, to_binary, Order, Addr, Deps};
 use cw_storage_plus::Bound;
 
-use crate::{msg::{QueryMsg, QueryAnnouncementsMsg}, state::{WHITELIST, announcements, Announcement, WhitelistVote, WHITELIST_VOTES}};
+use crate::{msg::{QueryMsg, QueryAnnouncementsMsg}, state::{WHITELIST, announcements, Announcement, WhitelistVote, WHITELIST_VOTES, TOPICS, Topic}};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
@@ -12,6 +12,7 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Announcements(msg) => to_binary(&query_announcements(deps, env, msg)?),
         QueryMsg::Whitelist {  } => to_binary(&query_whitelist(deps, env)?),
         QueryMsg::Pending {  } => to_binary(&query_pending(deps, env)?),
+        QueryMsg::Topics {  } => to_binary(&query_topics(deps, env)?),
     }
 }
 
@@ -46,5 +47,16 @@ fn query_pending(deps: Deps, env: Env) -> StdResult<Vec<WhitelistVote>> {
             Err(e) => Some(Err(e)),
         })
         .collect::<StdResult<Vec<WhitelistVote>>>()?;
+    Ok(list)
+}
+
+fn query_topics(deps: Deps, _env: Env) -> StdResult<Vec<Topic>> {
+    let list = TOPICS.range(deps.storage, None, None, Order::Ascending)
+        .filter_map(|item| match item {
+            Ok((_, a)) => Some(a),
+            Err(_) => None,
+        })
+        .collect::<Vec<Topic>>();
+
     Ok(list)
 }
