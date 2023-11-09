@@ -134,7 +134,7 @@ function getAnnouncements() {
 
     const jsonData = {
         announcements: {
-            since: (storage?.lastAnnouncement ? storage.lastAnnouncement.time : null)
+            since: (storage?.lastAnnouncement ? (parseInt(storage.lastAnnouncement.time, 10) + 1).toFixed(0) : null)
         }
     };
 
@@ -191,7 +191,7 @@ function processAnnouncements(announcements) {
 function handleAnnouncements() {
     getAnnouncements().then(announcements => {
         if(announcements && announcements.length > 0) {
-            console.log('Got announcements:', announcements);
+            console.log('Got announcements:', announcements.length);
             processAnnouncements(announcements);
         }
     }).catch(error => {
